@@ -91,6 +91,7 @@
    <header>glwidget.h</header>
    <container>1</container>
    <slots>
+    <signal>statusBarMessage(QString)</signal>
     <slot>toggleBackgroundColor(bool)</slot>
     <slot>showFileOpenDialog()</slot>
    </slots>
@@ -143,6 +144,22 @@
     <hint type="destinationlabel">
      <x>445</x>
      <y>261</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>widget</sender>
+   <signal>statusBarMessage(QString)</signal>
+   <receiver>statusbar</receiver>
+   <slot>showMessage(QString)</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>275</x>
+     <y>211</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>276</x>
+     <y>467</y>
     </hint>
    </hints>
   </connection>
