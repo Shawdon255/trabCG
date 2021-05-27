@@ -11,13 +11,21 @@ LIBS += -lOpengl32
 #DEFINES += QT_DISABLE_DEPRECATED_BEFORE=0x060000    # disables all the APIs deprecated before Qt 6.0.0
 
 SOURCES += \
+    camera.cpp \
     glwidget.cpp \
+    light.cpp \
     main.cpp \
-    mainwindow.cpp
+    mainwindow.cpp \
+    material.cpp \
+    trackball.cpp
 
 HEADERS += \
+    camera.h \
     glwidget.h \
-    mainwindow.h
+    light.h \
+    mainwindow.h \
+    material.h \
+    trackball.h
 
 FORMS += \
     mainwindow.ui
@@ -26,3 +34,6 @@ FORMS += \
 qnx: target.path = /tmp/$${TARGET}/bin
 else: unix:!android: target.path = /opt/$${TARGET}/bin
 !isEmpty(target.path): INSTALLS += target
+
+RESOURCES += \
+    resources.qrc

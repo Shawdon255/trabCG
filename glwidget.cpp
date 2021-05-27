@@ -1,31 +1,312 @@
 #include "glwidget.h"
 
 GLWidget::GLWidget(QWidget *parent) : QGLWidget(parent) {
+    vertices = NULL;
+    normals = NULL;
+    texCoords = NULL;
+    tangents = NULL;
+    indices = NULL;
 
-}
+    vboVertices = NULL;
+    vboNormals = NULL;
+    vboTexCoords = NULL;
+    vboTangents = NULL;
+    vboIndices = NULL;
+
+    shaderProgram = NULL;
+    vertexShader = NULL;
+    fragmentShader = NULL;
+    currentShader = 0;
+
+    zoom = 0.0;
+
+    //fpsCounter = 0;
+
+}//end GLWidget constructor
+
+GLWidget::~GLWidget () {
+    destroyVBOs();
+    destroyShaders();
+}//end GLWidget destructor
 
 void GLWidget::initializeGL() {
+    QOpenGLFunctions glFuncs(QOpenGLContext::currentContext());
+    glFuncs.glEnable(GL_DEPTH_TEST);
 
-}
+    QImage texColor= QImage(":/textures/bricksDiffuse.png");
+    QImage texNormal= QImage(":/textures/bricksNormal.png");
+
+    glFuncs.glActiveTexture(GL_TEXTURE0);
+    texID [0] = bindTexture(texColor);
+    glFuncs.glActiveTexture(GL_TEXTURE1);
+    texID [1] = bindTexture(texNormal);
+
+    connect (&timer ,SIGNAL(timeout ()), this ,SLOT(animate ()));
+    timer.start (0);
+}//end initializeGL()
 
 void GLWidget::resizeGL(int width, int height) {
+    QOpenGLFunctions glFuncs(QOpenGLContext::currentContext());
+    glFuncs.glViewport (0, 0, width , height);
 
+    projectionMatrix.setToIdentity();
+    projectionMatrix.perspective (60.0 ,static_cast <qreal >(width) / static_cast <qreal >(height), 0.1, 20.0);
+
+    trackBall.resizeViewport(width , height);
+
+    updateGL ();
 }
 
 void GLWidget::paintGL() {
-    glClear(GL_COLOR_BUFFER_BIT);
+    QOpenGLFunctions glFuncs(QOpenGLContext::currentContext());
+    glFuncs.glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+    if (!vboVertices)
+        return;
+
+    modelViewMatrix.setToIdentity();
+    modelViewMatrix.lookAt(camera.eye ,camera.at ,camera.up);
+    modelViewMatrix.translate (0, 0, zoom);
+    modelViewMatrix.rotate(trackBall.getRotation());
+
+    shaderProgram->bind ();
+
+    shaderProgram->setUniformValue("modelViewMatrix", modelViewMatrix);
+    shaderProgram->setUniformValue("projectionMatrix", projectionMatrix);
+    shaderProgram->setUniformValue("normalMatrix", modelViewMatrix.normalMatrix());
+
+    QVector4D ambientProduct = light.ambient * material.ambient;
+    QVector4D diffuseProduct = light.diffuse * material.diffuse;
+    QVector4D specularProduct = light.specular * material.specular;
+
+    shaderProgram->setUniformValue("lightPosition", light.position);
+    shaderProgram->setUniformValue("ambientProduct", ambientProduct);
+    shaderProgram->setUniformValue("diffuseProduct", diffuseProduct);
+    shaderProgram->setUniformValue("specularProduct", specularProduct);
+    shaderProgram->setUniformValue("shininess", static_cast <GLfloat >( material.shininess));
+
+    shaderProgram->setUniformValue("texColorMap", 0);
+    shaderProgram->setUniformValue("texNormalMap", 1);
+
+    glFuncs.glActiveTexture(GL_TEXTURE0);
+    glFuncs.glBindTexture(GL_TEXTURE_2D , texID[0]);
+    glFuncs.glActiveTexture(GL_TEXTURE1);
+    glFuncs.glBindTexture(GL_TEXTURE_2D , texID[1]);
+
+    vboVertices->bind();
+    shaderProgram->enableAttributeArray("vPosition");
+    shaderProgram->setAttributeBuffer("vPosition", GL_FLOAT , 0, 4, 0);
+
+    vboNormals->bind();
+    shaderProgram->enableAttributeArray("vNormal");
+    shaderProgram->setAttributeBuffer("vNormal", GL_FLOAT , 0, 3, 0);
+
+    vboTexCoords->bind();
+    shaderProgram->enableAttributeArray("vTexCoord");
+    shaderProgram->setAttributeBuffer("vTexCoord", GL_FLOAT , 0, 2, 0);
+
+    vboTangents->bind();
+    shaderProgram->enableAttributeArray("vTangent");
+    shaderProgram->setAttributeBuffer("vTangent", GL_FLOAT , 0, 4, 0);
+
+    vboIndices->bind();
+
+    glFuncs.glDrawElements(GL_TRIANGLES , numFaces * 3, GL_UNSIGNED_INT , 0);
+
+    vboIndices->release();
+    vboTangents->release();
+    vboTexCoords->release();
+    vboNormals->release();
+    vboVertices->release();
+    shaderProgram->release();
+
 }//end paintGL()
 
 void GLWidget::toggleBackgroundColor(bool toBlack) {
+    QOpenGLFunctions glFuncs(QOpenGLContext::currentContext());
     if (toBlack) {
-        glClearColor(0,0,0,1);
+        glFuncs.glClearColor(0,0,0,1);
     } else {
-        glClearColor(1,1,1,1);
+        glFuncs.glClearColor(1,1,1,1);
     }//end if else
 
     updateGL();
 
 }//end toggleBackgroundColor()
+
+void GLWidget::animate() {
+    updateGL();
+}
+
+void GLWidget::mouseMoveEvent(QMouseEvent *event) {
+    trackBall.mouseMove(event ->pos());
+} //end mouseMoveEvent()
+
+void GLWidget::mousePressEvent(QMouseEvent *event) {
+    if (event->button() & Qt::LeftButton)
+    trackBall.mousePress(event->pos());
+}//end mousePressEvent()
+
+void GLWidget::mouseReleaseEvent(QMouseEvent *event) {
+    if (event->button() == Qt::LeftButton)
+    trackBall.mouseRelease(event->pos());
+}//end mouseReleaseEvent()
+
+void GLWidget::wheelEvent(QWheelEvent *event) {
+    zoom += 0.001 * event->angleDelta().y();
+}//end wheelEvent()
+
+void GLWidget::keyPressEvent(QKeyEvent *event) {
+    switch(event->key()) {
+        case Qt::Key_0:
+            currentShader = 0;
+            createShaders();
+            updateGL();
+            break;
+        case Qt::Key_1:
+            currentShader = 1;
+            createShaders();
+            updateGL();
+            break;
+        case Qt::Key_2:
+            currentShader = 2;
+            createShaders();
+            updateGL();
+            break;
+        case Qt::Key_3:
+            currentShader = 3;
+            createShaders();
+            updateGL();
+            break;
+        case Qt:: Key_Escape:
+            qApp->quit ();
+    }
+} //end keyPressEvent()
+
+void GLWidget::createVBOs() {
+    destroyVBOs();
+
+    vboVertices = new QGLBuffer(QGLBuffer::VertexBuffer);
+    vboVertices->create();
+    vboVertices->bind();
+    vboVertices->setUsagePattern(QGLBuffer::StaticDraw);
+    vboVertices->allocate(vertices , numVertices * sizeof(QVector4D));
+    delete[] vertices;
+    vertices = NULL;
+
+    vboNormals = new QGLBuffer(QGLBuffer::VertexBuffer);
+    vboNormals->create();
+    vboNormals->bind();
+    vboNormals->setUsagePattern(QGLBuffer::StaticDraw);
+    vboNormals->allocate(normals , numVertices * sizeof(QVector3D));
+    delete[] normals;
+    normals = NULL;
+
+    vboTexCoords = new QGLBuffer(QGLBuffer::VertexBuffer);
+    vboTexCoords->create();
+    vboTexCoords->bind();
+    vboTexCoords->setUsagePattern(QGLBuffer::StaticDraw);
+    vboTexCoords->allocate(texCoords , numVertices * sizeof(QVector2D));
+    delete[] texCoords;
+    texCoords = NULL;
+
+    vboTangents = new QGLBuffer(QGLBuffer::VertexBuffer);
+    vboTangents->create();
+    vboTangents->bind();
+    vboTangents->setUsagePattern(QGLBuffer::StaticDraw);
+    vboTangents->allocate(tangents , numVertices * sizeof(QVector4D));
+    delete[] tangents;
+    tangents = NULL;
+
+    vboIndices = new QGLBuffer(QGLBuffer::IndexBuffer);
+    vboIndices->create();
+    vboIndices->bind();
+    vboIndices->setUsagePattern(QGLBuffer::StaticDraw);
+    vboIndices->allocate(indices , numFaces * 3 * sizeof(unsigned int));
+    delete[] indices;
+    indices = NULL;
+
+}//end createVBOs()
+
+void GLWidget::destroyVBOs() {
+    if (vboVertices) {
+        vboVertices->release();
+        delete vboVertices;
+        vboVertices = NULL;
+    }
+
+    if (vboNormals) {
+        vboNormals->release();
+        delete vboNormals;
+        vboNormals = NULL;
+    }
+
+    if (vboTexCoords) {
+        vboTexCoords->release();
+        delete vboTexCoords;
+        vboTexCoords = NULL;
+    }
+
+    if (vboTangents) {
+        vboTangents->release();
+        delete vboTangents;
+        vboTangents = NULL;
+    }
+
+    if (vboIndices) {
+        vboIndices->release();
+        delete vboIndices;
+        vboIndices = NULL;
+    }
+}//end destroyVBOs()
+
+void GLWidget::createShaders () {
+    destroyShaders();
+
+    QString vertexShaderFile [] = {
+        ":/shaders/vgouraud.glsl",
+        ":/shaders/vphong.glsl",
+        ":/shaders/vtexture.glsl",
+        ":/shaders/vnormal.glsl"
+    };
+    QString fragmentShaderFile [] = {
+        ":/shaders/fgouraud.glsl",
+        ":/shaders/fphong.glsl",
+        ":/shaders/ftexture.glsl",
+        ":/shaders/fnormal.glsl"
+    };
+
+    vertexShader = new QGLShader(QGLShader::Vertex);
+    if (!vertexShader->compileSourceFile(vertexShaderFile[
+         currentShader ]))
+        qWarning () << vertexShader->log();
+
+    fragmentShader = new QGLShader(QGLShader::Fragment);
+    if (!fragmentShader->compileSourceFile(
+         fragmentShaderFile[currentShader ]))
+        qWarning () << fragmentShader->log();
+
+    shaderProgram = new QGLShaderProgram;
+    shaderProgram->addShader(vertexShader);
+    shaderProgram->addShader(fragmentShader);
+
+    if (!shaderProgram->link())
+        qWarning () << shaderProgram ->log() << Qt::endl;
+} // end createShaders()
+
+void GLWidget::destroyShaders() {
+    delete vertexShader;
+    vertexShader = NULL;
+
+    delete fragmentShader;
+    fragmentShader = NULL;
+
+    if (shaderProgram) {
+        shaderProgram->release();
+        delete shaderProgram;
+        shaderProgram = NULL;
+    }
+} // end destroyShaders()
 
 void GLWidget::genTangents() {
     delete[] tangents;
@@ -198,6 +479,8 @@ void GLWidget::readOFFFile(const QString &fileName) {
 
     stream.close();
 
+    emit statusBarMessage(QString("Samples %1, Faces %2").arg(numVertices).arg(numFaces));
+
 }//end readOFFFile()
 
 void GLWidget::showFileOpenDialog() {
@@ -217,8 +500,8 @@ void GLWidget::showFileOpenDialog() {
         genTexCoordsCylinder();
         genTangents();
 
-        //createVBOs();
-        //createShaders();
+        createVBOs();
+        createShaders();
 
         updateGL();
     }//end if
