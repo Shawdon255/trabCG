@@ -13,8 +13,7 @@
 //#include "material.h"
 //#include "trackball.h"
 
-class GLWidget : public QGLWidget
-{
+class GLWidget : public QGLWidget {
     Q_OBJECT
 public:
     explicit GLWidget(QWidget *parent = nullptr);
