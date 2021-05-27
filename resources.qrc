@@ -12,5 +12,7 @@
     <qresource prefix="/textures">
         <file>bricksDiffuse.png</file>
         <file>bricksNormal.png</file>
+        <file>brick_1.png</file>
+        <file>brick_1_normal_and_height_maps.png</file>
     </qresource>
 </RCC>

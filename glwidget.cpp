@@ -33,8 +33,11 @@ void GLWidget::initializeGL() {
     QOpenGLFunctions glFuncs(QOpenGLContext::currentContext());
     glFuncs.glEnable(GL_DEPTH_TEST);
 
-    QImage texColor= QImage(":/textures/bricksDiffuse.png");
-    QImage texNormal= QImage(":/textures/bricksNormal.png");
+    //QImage texColor= QImage(":/textures/bricksDiffuse.png");
+    //QImage texNormal= QImage(":/textures/bricksNormal.png");
+    QImage texColor= QImage(":/textures/brick_1.png");
+    QImage texNormal= QImage(":/textures/brick_1_normal_and_height_maps.png");
+
 
     glFuncs.glActiveTexture(GL_TEXTURE0);
     texID [0] = bindTexture(texColor);
